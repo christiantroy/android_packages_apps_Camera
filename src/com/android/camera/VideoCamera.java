@@ -269,6 +269,10 @@ public class VideoCamera extends ActivityBase
     private ZoomControl mZoomControl;
     private final ZoomListener mZoomListener = new ZoomListener();
 
+    private boolean mRestartPreview = false;
+    private int videoWidth; 
+    private int videoHeight;
+
     // This Handler is used to post message back onto the main thread of the
     // application
     private class MainHandler extends Handler {
@@ -1216,6 +1220,9 @@ public class VideoCamera extends ActivityBase
         Intent intent = getIntent();
         Bundle myExtras = intent.getExtras();
 
+        videoWidth = mProfile.videoFrameWidth;
+        videoHeight = mProfile.videoFrameHeight;
+
         long requestedSizeLimit = 0;
         closeVideoFileDescriptor();
         if (mIsVideoCaptureIntent && myExtras != null) {
@@ -1920,6 +1927,8 @@ public class VideoCamera extends ActivityBase
     }
 
     private void setCameraHardwareParameters() {
+        CameraSettings.dumpParameters(mParameters);
+
         mCameraDevice.setParameters(mParameters);
     }
 
@@ -2003,6 +2012,7 @@ public class VideoCamera extends ActivityBase
                 CameraProfile.QUALITY_HIGH);
         mParameters.setJpegQuality(jpegQuality);
 
+        CameraSettings.dumpParameters(mParameters);
         mCameraDevice.setParameters(mParameters);
         // Keep preview size up to date.
         mParameters = mCameraDevice.getParameters();
@@ -2197,10 +2207,20 @@ public class VideoCamera extends ActivityBase
             } else {
                 readVideoPreferences();
                 showTimeLapseUI(mCaptureTimeLapse);
+
+                //To restart the preview even if record size changes..
+                //Remove once HAL change is ready
+                if(mProfile.videoFrameWidth != videoWidth ||
+                   mProfile.videoFrameHeight != videoHeight ) {
+                    videoWidth = mProfile.videoFrameWidth;
+                    videoHeight = mProfile.videoFrameHeight;
+                    mRestartPreview = true;
+                }
+
                 // We need to restart the preview if preview size is changed.
                 Size size = mParameters.getPreviewSize();
                 if (size.width != mDesiredPreviewWidth
-                        || size.height != mDesiredPreviewHeight) {
+                        || size.height != mDesiredPreviewHeight || mRestartPreview) {
                     if (!effectsActive()) {
                         mCameraDevice.stopPreview();
                     } else {
@@ -2208,6 +2228,7 @@ public class VideoCamera extends ActivityBase
                     }
                     resizeForPreviewAspectRatio();
                     startPreview(); // Parameters will be set in startPreview().
+                    mRestartPreview = false;
                 } else {
                     setCameraParameters();
                 }
@@ -2263,10 +2284,9 @@ public class VideoCamera extends ActivityBase
         if (size.width != mDesiredPreviewWidth
                 || size.height != mDesiredPreviewHeight) {
             resizeForPreviewAspectRatio();
-        } else {
-            // Start up preview again
-            startPreview();
         }
+        // Start up preview
+        startPreview();
     }
 
     private void showTimeLapseUI(boolean enable) {
@@ -2445,6 +2465,7 @@ public class VideoCamera extends ActivityBase
         Util.setRotationParameter(mParameters, mCameraId, mOrientation);
         Location loc = mLocationManager.getCurrentLocation();
         Util.setGpsParameters(mParameters, loc);
+        CameraSettings.dumpParameters(mParameters);
         mCameraDevice.setParameters(mParameters);
 
         Log.v(TAG, "Video snapshot start");
